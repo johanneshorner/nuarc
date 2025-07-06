@@ -1,0 +1,104 @@
+#!/usr/bin/env nu
+
+let config_path = $"($env.HOME)/.local/share/nuarc/config.json"
+
+def load-config [] {
+  try {
+    open $config_path
+  } catch {
+    error make { msg: "no config found, run `nuarc configure`" }
+  }
+}
+
+def write-config []: record -> nothing {
+  save -f $config_path
+}
+
+def build-api-url [root_url: string] {
+  $root_url | path join "rest/v1"
+}
+
+def request-cookie [config: record]: nothing -> string {
+  let url = build-api-url $config.root-url | path join login-sessions
+  let response = (
+    http
+      post
+      --content-type application/json
+      $url
+      (
+        {
+          userName: $config.username
+          password: $config.password
+        }
+        | to json
+      )
+  )
+  $response.cookie
+}
+
+def create-session [config: record]: nothing -> string {
+  try {
+    do (create-getter $config --authenticate) 1
+    $config.cookie
+  } catch {
+    let new_cookie = request-cookie $config
+    $config | update cookie $new_cookie | write-config
+    $new_cookie
+  }
+}
+
+def create-getter [config: record, --authenticate]: nothing -> closure {
+  let api_url = build-api-url $config.root-url
+  {|port_id|
+    let url = $api_url | path join $"ports/($port_id)/poe"
+    if $authenticate {
+      http get --headers { Cookie: $config.cookie } $url
+    } else {
+      http get $url
+    }
+  }
+}
+
+def create-setter [config: record, state: bool]: nothing -> closure {
+  let cookie = create-session $config
+  let api_url = build-api-url $config.root-url
+  {|port_id|
+    let url = $api_url | path join $"ports/($port_id)/poe"
+    (
+      http
+        put
+        --headers { Cookie: $cookie }
+        --content-type application/json
+        $url
+        ({is_poe_enabled: $state} | to json)
+    )
+  }
+}
+
+def "main configure" [root_url: string, username: string, password: string] {
+  let config = {
+    root-url: $root_url
+    username: $username
+    password: $password
+  }
+  let cookie = request-cookie $config
+
+  mkdir ($config_path | path dirname)
+  $config | insert cookie $cookie | write-config
+}
+
+def "main" [ports: list<int>, --on, --off] {
+  if $on and $off {
+    error make { msg: "only one of `--on` or `--off` can be used" }
+  }
+  let config = load-config
+  let root_url = build-api-url $config.root-url
+  let requester = if $on or $off {
+    create-setter $config $on
+  } else {
+    create-getter $config
+  }
+  for $port in $ports {
+    print (do $requester $port)
+  }
+}
