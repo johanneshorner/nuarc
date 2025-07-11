@@ -23,9 +23,13 @@
 
           src = ./.;
 
+          nativeBuildInputs = [ makeWrapper ];
+
           installPhase = ''
             mkdir -p $out/bin
             cp ./nuarc $out/bin/
+            wrapProgram $out/bin/nuarc \
+              --prefix PATH : ${lib.makeBinPath [ nushell ]}
           '';
 
           meta = {
