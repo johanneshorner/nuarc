@@ -1,6 +1,6 @@
 #!/usr/bin/env nu
 
-let config_path = $"($env.HOME)/.local/share/nuarc/config.json"
+let config_path = $"($env.HOME)/.local/state/nuarc/config.json"
 
 def load-config [] {
   try {
