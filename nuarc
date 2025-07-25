@@ -98,7 +98,7 @@ def "main" [ports: list<int>, --on, --off] {
   } else {
     create-getter $config
   }
-  for $port in $ports {
-    print (do $requester $port)
+  $ports | par-each {|port|
+    do $requester $port
   }
 }
